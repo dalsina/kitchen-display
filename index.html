@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pantalla Cocina</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    body {
+      background-color: #1a1a1a;
+      color: #f0f0f0;
+      font-family: 'Segoe UI', sans-serif;
+      min-height: 100vh;
+    }
+
+    .navbar-kitchen {
+      background-color: #111;
+      border-bottom: 2px solid #333;
+      padding: 12px 24px;
+    }
+
+    .navbar-kitchen .brand {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #fff;
+    }
+
+    .navbar-kitchen .subtitle {
+      font-size: 1rem;
+      color: #aaa;
+      margin-left: 16px;
+    }
+
+    .live-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.85rem;
+      color: #6fcf97;
+    }
+
+    .live-indicator.disconnected {
+      color: #e74c3c;
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: #6fcf97;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    .live-dot.disconnected {
+      background: #e74c3c;
+      animation: none;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Order column */
+    .order-column {
+      background: #242424;
+      border-radius: 12px;
+      padding: 16px;
+      min-width: 220px;
+    }
+
+    .order-header {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #ccc;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .order-all-done-badge {
+      font-size: 0.7rem;
+      background: rgba(111, 207, 151, 0.2);
+      color: #6fcf97;
+      border-radius: 20px;
+      padding: 2px 10px;
+      font-weight: 600;
+    }
+
+    /* Item cards */
+    .item-card {
+      border-radius: 10px;
+      padding: 18px 14px;
+      text-align: center;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: none;
+      user-select: none;
+      margin-bottom: 10px;
+    }
+
+    .item-card:last-child {
+      margin-bottom: 0;
+    }
+
+    .item-card:hover:not(.item-hecho):not(.saving) {
+      transform: scale(1.02);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+    }
+
+    .item-card.item-pendiente {
+      background: linear-gradient(135deg, #c0392b, #e74c3c);
+      color: #fff;
+    }
+
+    .item-card.item-hecho {
+      background: #1e3a2f;
+      color: #6fcf97;
+      cursor: default;
+      opacity: 0.65;
+    }
+
+    .item-card.saving {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .item-nombre {
+      font-size: 1.2rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .item-nombre.tachado {
+      text-decoration: line-through;
+      opacity: 0.7;
+    }
+
+    .item-estado-badge {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+
+    .item-pendiente .item-estado-badge {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    .item-hecho .item-estado-badge {
+      background: rgba(111, 207, 151, 0.2);
+      color: #6fcf97;
+    }
+
+    .item-icon {
+      font-size: 1.4rem;
+    }
+
+    /* Orders grid */
+    .orders-grid {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: flex-start;
+    }
+
+    .orders-grid .order-column {
+      flex: 1 1 220px;
+      max-width: 320px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #555;
+    }
+
+    .empty-state i {
+      font-size: 5rem;
+      margin-bottom: 20px;
+      display: block;
+    }
+
+    .empty-state p {
+      font-size: 1.4rem;
+    }
+
+    /* Loading overlay */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .loading-overlay .spinner-border {
+      width: 3rem;
+      height: 3rem;
+      color: #e74c3c;
+    }
+
+    /* Error banner */
+    .error-banner {
+      background: #5a1a1a;
+      border: 1px solid #e74c3c;
+      color: #f5a5a5;
+      border-radius: 8px;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+
+    <!-- Navbar -->
+    <nav class="navbar-kitchen d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center">
+        <span class="brand">FLIPPING PARK</span>
+        <span class="subtitle"><i class="bi bi-fire me-1"></i>Pantalla Cocina</span>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <span class="live-indicator" :class="{ disconnected: !connected }">
+          <span class="live-dot" :class="{ disconnected: !connected }"></span>
+          {{ connected ? 'EN VIVO' : 'DESCONECTADO' }}
+        </span>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="container-fluid p-4">
+
+      <!-- Error banner -->
+      <div v-if="error" class="error-banner mb-4">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <span>{{ error }}</span>
+        <button class="btn btn-sm btn-outline-danger ms-auto" @click="error = null">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+
+      <!-- Sin pedidos -->
+      <div v-if="!loading && orders.length === 0" class="empty-state">
+        <i class="bi bi-clock-history"></i>
+        <p>Sin pedidos activos</p>
+        <p class="fs-6 text-secondary">Esperando nuevos pedidos...</p>
+      </div>
+
+      <!-- Pedidos activos -->
+      <div v-if="orders.length > 0" class="orders-grid">
+        <div
+          v-for="(order, orderIndex) in orders"
+          :key="order.order_id"
+          class="order-column"
+        >
+          <div class="order-header">
+            <span><i class="bi bi-receipt me-1"></i>#{{ order.order_id }}</span>
+            <span v-if="isOrderDone(order)" class="order-all-done-badge">
+              <i class="bi bi-check-all me-1"></i>Listo
+            </span>
+          </div>
+
+          <div
+            v-for="(producto, itemIndex) in order.productos"
+            :key="itemIndex"
+            class="item-card"
+            :class="[
+              producto.estado === 'hecho' ? 'item-hecho' : 'item-pendiente',
+              saving ? 'saving' : ''
+            ]"
+            @click="toggleItem(orderIndex, itemIndex)"
+          >
+            <span class="item-icon">
+              <i v-if="producto.estado === 'hecho'" class="bi bi-check-circle-fill"></i>
+              <i v-else class="bi bi-hourglass-split"></i>
+            </span>
+            <span class="item-nombre" :class="{ 'tachado': producto.estado === 'hecho' }">
+              {{ producto.nombre }}
+            </span>
+            <span class="item-estado-badge">
+              {{ producto.estado === 'hecho' ? 'Hecho' : 'Pendiente' }}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div v-if="loading" class="loading-overlay">
+      <div class="spinner-border" role="status">
+        <span class="visually-hidden">Cargando...</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ─── CONFIGURA AQUÍ ───────────────────────────────────────────────────────
+    const SUPABASE_URL  = 'https://fifdamwqfsqqynadagcu.supabase.co';
+    const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZpZmRhbXdxZnNxcXluYWRhZ2N1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNjM2MTksImV4cCI6MjA5MTYzOTYxOX0.hscgRqP7WxbaRgl8epNcvwWELPZ2aPuwbOWghZkmZZE';
+    // ─────────────────────────────────────────────────────────────────────────
+
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    const { createApp } = Vue;
+
+    createApp({
+      data() {
+        return {
+          orders: [],
+          loading: true,
+          saving: false,
+          connected: false,
+          error: null,
+        };
+      },
+
+      async mounted() {
+        await this.fetchOrders();
+        this.subscribeRealtime();
+      },
+
+      methods: {
+        isOrderDone(order) {
+          return order.productos.length > 0 && order.productos.every(p => p.estado === 'hecho');
+        },
+
+        async fetchOrders() {
+          try {
+            const { data, error } = await db
+              .from('kitchen_orders')
+              .select('order_id, productos')
+              .order('created_at', { ascending: true });
+
+            if (error) {
+              this.error = 'Error Supabase: ' + error.message;
+            } else {
+              this.orders = data || [];
+            }
+          } catch (e) {
+            this.error = 'No se pudo conectar con Supabase: ' + e.message;
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        subscribeRealtime() {
+          db.channel('kitchen_orders_changes')
+            .on(
+              'postgres_changes',
+              { event: '*', schema: 'public', table: 'kitchen_orders' },
+              () => this.fetchOrders()
+            )
+            .subscribe((status) => {
+              this.connected = status === 'SUBSCRIBED';
+            });
+        },
+
+        async toggleItem(orderIndex, itemIndex) {
+          if (this.saving) return;
+          if (this.orders[orderIndex].productos[itemIndex].estado === 'hecho') return;
+
+          const order = this.orders[orderIndex];
+          const previous = JSON.parse(JSON.stringify(this.orders));
+
+          // Optimistic update
+          this.orders[orderIndex].productos[itemIndex].estado = 'hecho';
+          this.saving = true;
+          this.error = null;
+
+          const updatedProductos = this.orders[orderIndex].productos;
+
+          const { error } = await db
+            .from('kitchen_orders')
+            .update({ productos: updatedProductos, updated_at: new Date().toISOString() })
+            .eq('order_id', order.order_id);
+
+          if (error) {
+            this.orders = previous;
+            this.error = 'No se pudo actualizar el estado. Inténtalo de nuevo.';
+          }
+          this.saving = false;
+        },
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>

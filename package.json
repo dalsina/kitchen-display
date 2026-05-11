@@ -1,0 +1,12 @@
+{
+  "name": "kitchen-display",
+  "version": "1.0.0",
+  "description": "Pantalla de cocina - Flipping Park",
+  "scripts": {
+    "start": "serve -p ${PORT:-3000} .",
+    "dev": "serve -p 3456 ."
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  }
+}
