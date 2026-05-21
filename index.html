@@ -219,6 +219,42 @@
       color: #e74c3c;
     }
 
+    /* Completed toggle */
+    .completed-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: #888;
+      cursor: pointer;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid #333;
+      transition: all 0.15s ease;
+      user-select: none;
+    }
+
+    .completed-toggle:hover {
+      border-color: #555;
+      color: #bbb;
+    }
+
+    .completed-toggle.active {
+      border-color: #6fcf97;
+      color: #6fcf97;
+      background: rgba(111, 207, 151, 0.1);
+    }
+
+    .completed-count {
+      background: #6fcf97;
+      color: #111;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 1px 6px;
+      margin-left: 2px;
+    }
+
     /* Error banner */
     .error-banner {
       background: #5a1a1a;
@@ -244,6 +280,12 @@
         <span class="subtitle"><i class="bi bi-fire me-1"></i>Pantalla Cocina</span>
       </div>
       <div class="d-flex align-items-center gap-3">
+        <label class="completed-toggle" :class="{ active: showCompleted }">
+          <input type="checkbox" v-model="showCompleted" hidden>
+          <i class="bi bi-check2-square me-1"></i>
+          Mostrar completados
+          <span v-if="completedCount > 0" class="completed-count">{{ completedCount }}</span>
+        </label>
         <span class="live-indicator" :class="{ disconnected: !connected }">
           <span class="live-dot" :class="{ disconnected: !connected }"></span>
           {{ connected ? 'EN VIVO' : 'DESCONECTADO' }}
@@ -264,16 +306,16 @@
       </div>
 
       <!-- Sin pedidos -->
-      <div v-if="!loading && orders.length === 0" class="empty-state">
+      <div v-if="!loading && visibleOrders.length === 0" class="empty-state">
         <i class="bi bi-clock-history"></i>
-        <p>Sin pedidos activos</p>
-        <p class="fs-6 text-secondary">Esperando nuevos pedidos...</p>
+        <p>{{ orders.length === 0 ? 'Sin pedidos activos' : 'Todos los pedidos completados' }}</p>
+        <p class="fs-6 text-secondary">{{ orders.length === 0 ? 'Esperando nuevos pedidos...' : 'Activa "Mostrar completados" para verlos' }}</p>
       </div>
 
       <!-- Pedidos activos -->
-      <div v-if="orders.length > 0" class="orders-grid">
+      <div v-if="visibleOrders.length > 0" class="orders-grid">
         <div
-          v-for="(order, orderIndex) in orders"
+          v-for="(order, orderIndex) in visibleOrders"
           :key="order.order_id"
           class="order-column"
         >
@@ -292,7 +334,7 @@
               producto.estado === 'hecho' ? 'item-hecho' : 'item-pendiente',
               saving ? 'saving' : ''
             ]"
-            @click="toggleItem(orderIndex, itemIndex)"
+            @click="toggleItem(order.order_id, itemIndex)"
           >
             <span class="item-icon">
               <i v-if="producto.estado === 'hecho'" class="bi bi-check-circle-fill"></i>
@@ -337,7 +379,18 @@
           saving: false,
           connected: false,
           error: null,
+          showCompleted: false,
         };
+      },
+
+      computed: {
+        visibleOrders() {
+          if (this.showCompleted) return this.orders;
+          return this.orders.filter(o => !this.isOrderDone(o));
+        },
+        completedCount() {
+          return this.orders.filter(o => this.isOrderDone(o)).length;
+        },
       },
 
       async mounted() {
@@ -381,11 +434,13 @@
             });
         },
 
-        async toggleItem(orderIndex, itemIndex) {
+        async toggleItem(orderId, itemIndex) {
           if (this.saving) return;
+
+          const orderIndex = this.orders.findIndex(o => o.order_id === orderId);
+          if (orderIndex === -1) return;
           if (this.orders[orderIndex].productos[itemIndex].estado === 'hecho') return;
 
-          const order = this.orders[orderIndex];
           const previous = JSON.parse(JSON.stringify(this.orders));
 
           // Optimistic update
@@ -398,7 +453,7 @@
           const { error } = await db
             .from('kitchen_orders')
             .update({ productos: updatedProductos, updated_at: new Date().toISOString() })
-            .eq('order_id', order.order_id);
+            .eq('order_id', orderId);
 
           if (error) {
             this.orders = previous;
