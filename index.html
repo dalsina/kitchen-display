@@ -219,6 +219,39 @@
       color: #e74c3c;
     }
 
+    /* Sound toggle */
+    .sound-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: #f39c12;
+      cursor: pointer;
+      padding: 5px 12px;
+      border-radius: 20px;
+      border: 1px solid #f39c12;
+      background: rgba(243, 156, 18, 0.1);
+      transition: all 0.15s ease;
+      user-select: none;
+      animation: pulse-warn 1.5s infinite;
+    }
+
+    .sound-toggle:hover {
+      background: rgba(243, 156, 18, 0.2);
+    }
+
+    .sound-toggle.active {
+      color: #6fcf97;
+      border-color: #6fcf97;
+      background: rgba(111, 207, 151, 0.1);
+      animation: none;
+    }
+
+    @keyframes pulse-warn {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
     /* Completed toggle */
     .completed-toggle {
       display: inline-flex;
@@ -280,6 +313,19 @@
         <span class="subtitle"><i class="bi bi-fire me-1"></i>Pantalla Cocina</span>
       </div>
       <div class="d-flex align-items-center gap-3">
+        <button
+          v-if="!audioReady"
+          class="sound-toggle"
+          @click="enableAudio(); playBeep();"
+          title="Activa el sonido para escuchar avisos de nuevos pedidos"
+        >
+          <i class="bi bi-volume-mute-fill me-1"></i>
+          Activar sonido
+        </button>
+        <span v-else class="sound-toggle active" @click="playBeep()" title="Probar sonido">
+          <i class="bi bi-volume-up-fill me-1"></i>
+          Sonido activado
+        </span>
         <label class="completed-toggle" :class="{ active: showCompleted }">
           <input type="checkbox" v-model="showCompleted" hidden>
           <i class="bi bi-check2-square me-1"></i>
@@ -380,6 +426,9 @@
           connected: false,
           error: null,
           showCompleted: false,
+          knownOrderIds: new Set(),
+          audioReady: false,
+          audioCtx: null,
         };
       },
 
@@ -413,12 +462,56 @@
             if (error) {
               this.error = 'Error Supabase: ' + error.message;
             } else {
-              this.orders = data || [];
+              const newOrders = data || [];
+              // Detect new orders (not in knownOrderIds and not yet completed)
+              const isFirstLoad = this.knownOrderIds.size === 0 && this.loading;
+              if (!isFirstLoad) {
+                for (const o of newOrders) {
+                  if (!this.knownOrderIds.has(o.order_id) && !this.isOrderDone(o)) {
+                    this.playBeep();
+                    break; // one beep per refresh even if multiple new orders
+                  }
+                }
+              }
+              this.knownOrderIds = new Set(newOrders.map(o => o.order_id));
+              this.orders = newOrders;
             }
           } catch (e) {
             this.error = 'No se pudo conectar con Supabase: ' + e.message;
           } finally {
             this.loading = false;
+          }
+        },
+
+        enableAudio() {
+          if (this.audioReady) return;
+          try {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            this.audioReady = true;
+          } catch (e) {
+            console.warn('AudioContext not available', e);
+          }
+        },
+
+        playBeep() {
+          if (!this.audioReady || !this.audioCtx) return;
+          try {
+            // 3 short loud beeps for attention
+            const now = this.audioCtx.currentTime;
+            for (let i = 0; i < 3; i++) {
+              const osc = this.audioCtx.createOscillator();
+              const gain = this.audioCtx.createGain();
+              osc.type = 'square';
+              osc.frequency.value = 880; // A5
+              gain.gain.setValueAtTime(0, now + i * 0.22);
+              gain.gain.linearRampToValueAtTime(0.6, now + i * 0.22 + 0.01);
+              gain.gain.linearRampToValueAtTime(0, now + i * 0.22 + 0.18);
+              osc.connect(gain).connect(this.audioCtx.destination);
+              osc.start(now + i * 0.22);
+              osc.stop(now + i * 0.22 + 0.2);
+            }
+          } catch (e) {
+            console.warn('Beep failed', e);
           }
         },
 
