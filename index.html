@@ -427,8 +427,25 @@
       },
 
       methods: {
+        // Garantiza que productos sea siempre un array, aunque llegue como
+        // string JSON (p.ej. si n8n lo inserta serializado) o venga null.
+        normalizeProductos(productos) {
+          if (Array.isArray(productos)) return productos;
+          if (typeof productos === 'string') {
+            try {
+              const parsed = JSON.parse(productos);
+              return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+              console.warn('productos no es un JSON válido:', productos);
+              return [];
+            }
+          }
+          return [];
+        },
+
         isOrderDone(order) {
-          return order.productos.length > 0 && order.productos.every(p => p.estado === 'hecho');
+          const p = order.productos;
+          return Array.isArray(p) && p.length > 0 && p.every(x => x.estado === 'hecho');
         },
 
         async fetchOrders() {
@@ -441,7 +458,10 @@
             if (error) {
               this.error = 'Error Supabase: ' + error.message;
             } else {
-              const newOrders = data || [];
+              const newOrders = (data || []).map(o => ({
+                order_id: o.order_id,
+                productos: this.normalizeProductos(o.productos),
+              }));
               // Detect new orders (not in knownOrderIds and not yet completed)
               const isFirstLoad = this.knownOrderIds.size === 0 && this.loading;
               if (!isFirstLoad) {
